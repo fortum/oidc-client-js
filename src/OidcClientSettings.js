@@ -24,6 +24,7 @@ export class OidcClientSettings {
         prompt, display, max_age, ui_locales, acr_values, resource,
         // behavior flags
         filterProtocolClaims = true, loadUserInfo = true,
+		validateNonce = true,
         staleStateAge = DefaultStaleStateAge, clockSkew = DefaultClockSkewInSeconds,
         // other behavior
         stateStore = new WebStorageStateStore(),
@@ -56,6 +57,7 @@ export class OidcClientSettings {
         this._loadUserInfo = !!loadUserInfo;
         this._staleStateAge = staleStateAge;
         this._clockSkew = clockSkew;
+		this._validateNonce = !!validateNonce;
 
         this._stateStore = stateStore;
         this._validator = new ResponseValidatorCtor(this);
@@ -173,6 +175,9 @@ export class OidcClientSettings {
     get clockSkew() {
         return this._clockSkew;
     }
+	get validateNonce() {
+		return this._validateNonce;
+	}
 
     get stateStore() {
         return this._stateStore;

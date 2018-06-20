@@ -231,7 +231,8 @@ export class ResponseValidator {
             return Promise.reject(new Error("Failed to parse id_token"));
         }
 
-        if (state.nonce !== jwt.payload.nonce) {
+        const validateNonce = this._settings._validateNonce === undefined && true || this._settings._validateNonce;
+        if (validateNonce && (state.nonce !== jwt.payload.nonce)) {
             Log.error("ResponseValidator._validateIdToken: Invalid nonce in id_token");
             return Promise.reject(new Error("Invalid nonce in id_token"));
         }
