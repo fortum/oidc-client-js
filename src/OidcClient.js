@@ -48,7 +48,7 @@ export class OidcClient {
         stateStore
     ) {
         Log.debug("OidcClient.createSigninRequest");
-
+        Log.debug("OidcClient.createSigninRequest: isBetaSignin = " + isBetaSignin);
         let client_id = this._settings.client_id;
         response_type = response_type || this._settings.response_type;
         scope = scope || this._settings.scope;
