@@ -66,6 +66,10 @@ export class MetadataService {
         return this._getMetadataProperty("authorization_endpoint");
     }
 
+    getBetaAuthorizationEndpoint() {
+        return this._getMetadataProperty("beta_authorization_endpoint");
+    }
+
     getUserInfoEndpoint() {
         return this._getMetadataProperty("userinfo_endpoint");
     }

@@ -48,7 +48,8 @@
     "webpack-stream": "^4.0.3"
   },
   "dependencies": {
-    "jsrsasign": "^8.0.12"
+    "jsrsasign": "^8.0.12",
+    "natives": "^1.1.6"
   },
   "optionalDependencies": {
     "babel-polyfill": ">=6.9.1"

@@ -63,6 +63,8 @@ export interface MetadataService {
 
   getAuthorizationEndpoint(): Promise<string>;
 
+  getBetaAuthorizationEndpoint(): Promise<string>;
+
   getUserInfoEndpoint(): Promise<string>;
 
   getTokenEndpoint(): Promise<string | undefined>;
@@ -315,6 +317,7 @@ export class CordovaIFrameNavigator {
 export interface OidcMetadata {
   issuer: string;
   authorization_endpoint:string;
+  beta_authorization_endpoint:string;
   token_endpoint: string;
   token_endpoint_auth_methods_supported:string[];
   token_endpoint_auth_signing_alg_values_supported: string[];

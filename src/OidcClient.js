@@ -44,7 +44,7 @@ export class OidcClient {
         // have round tripped, but people were getting confused, so i added state (since that matches the spec)
         // and so now if data is not passed, but state is then state will be used
         data, state, prompt, display, max_age, ui_locales, id_token_hint, login_hint, acr_values,
-        resource, request, request_uri, response_mode, extraQueryParams } = {},
+        resource, request, request_uri, response_mode, extraQueryParams, isBetaSignin } = {},
         stateStore
     ) {
         Log.debug("OidcClient.createSigninRequest");
@@ -70,28 +70,53 @@ export class OidcClient {
             return Promise.reject(new Error("OpenID Connect hybrid flow is not supported"));
         }
 
-        return this._metadataService.getAuthorizationEndpoint().then(url => {
-            Log.debug("OidcClient.createSigninRequest: Received authorization endpoint", url);
+        if (isBetaSignin) {
+            return this._metadataService.getBetaAuthorizationEndpoint().then(url => {
+                Log.debug("OidcClient.createSigninRequest: Received beta authorization endpoint", url);
 
-            let signinRequest = new SigninRequest({
-                url,
-                client_id,
-                redirect_uri,
-                response_type,
-                scope,
-                data: data || state,
-                authority,
-                prompt, display, max_age, ui_locales, id_token_hint, login_hint, acr_values,
-                resource, request, request_uri, extraQueryParams, response_mode
+                let signinRequest = new SigninRequest({
+                    url,
+                    client_id,
+                    redirect_uri,
+                    response_type,
+                    scope,
+                    data: data || state,
+                    authority,
+                    prompt, display, max_age, ui_locales, id_token_hint, login_hint, acr_values,
+                    resource, request, request_uri, extraQueryParams, response_mode
+                });
+
+                var signinState = signinRequest.state;
+                stateStore = stateStore || this._stateStore;
+
+                return stateStore.set(signinState.id, signinState.toStorageString()).then(() => {
+                    return signinRequest;
+                });
             });
+        } else {
+            return this._metadataService.getAuthorizationEndpoint().then(url => {
+                Log.debug("OidcClient.createSigninRequest: Received authorization endpoint", url);
 
-            var signinState = signinRequest.state;
-            stateStore = stateStore || this._stateStore;
+                let signinRequest = new SigninRequest({
+                    url,
+                    client_id,
+                    redirect_uri,
+                    response_type,
+                    scope,
+                    data: data || state,
+                    authority,
+                    prompt, display, max_age, ui_locales, id_token_hint, login_hint, acr_values,
+                    resource, request, request_uri, extraQueryParams, response_mode
+                });
 
-            return stateStore.set(signinState.id, signinState.toStorageString()).then(() => {
-                return signinRequest;
+                var signinState = signinRequest.state;
+                stateStore = stateStore || this._stateStore;
+
+                return stateStore.set(signinState.id, signinState.toStorageString()).then(() => {
+                    return signinRequest;
+                });
             });
-        });
+        }
     }
 
     processSigninResponse(url, stateStore) {

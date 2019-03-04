@@ -87,6 +87,7 @@ export class UserManager extends OidcClient {
     }
 
     signinRedirect(args) {
+        args.isBetaSignin = (window.location.pathname === '/inloggning') ? true : false;
         return this._signinStart(args, this._redirectNavigator).then(()=>{
             Log.info("UserManager.signinRedirect: successful");
         });
@@ -234,7 +235,6 @@ export class UserManager extends OidcClient {
             Log.error("UserManager.signinSilent: No silent_redirect_uri configured");
             return Promise.reject(new Error("No silent_redirect_uri configured"));
         }
-
         args.redirect_uri = url;
         args.prompt = args.prompt || "none";
 
