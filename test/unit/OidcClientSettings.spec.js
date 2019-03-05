@@ -302,6 +302,30 @@ describe("OidcClientSettings", function () {
         });
     });
 
+	describe("validateNonce", function () {
+
+		it("should use default value", function () {
+			let subject = new OidcClientSettings({
+				client_id: 'client',
+			});
+			subject.validateNonce.should.equal(true);
+		});
+
+		it("should return value from initial settings", function () {
+			let subject = new OidcClientSettings({
+				client_id: 'client',
+				validateNonce: true
+			});
+			subject.validateNonce.should.equal(true);
+
+			subject = new OidcClientSettings({
+				client_id: 'client',
+				validateNonce: false
+			});
+			subject.validateNonce.should.equal(false);
+		});
+	});
+
     describe("loadUserInfo", function () {
 
         it("should use default value", function () {

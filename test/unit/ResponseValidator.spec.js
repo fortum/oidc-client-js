@@ -648,7 +648,6 @@ describe("ResponseValidator", function () {
         });
 
         it("should validate just id_token", function (done) {
-
             stubResponse.id_token = "id_token";
             subject._validateIdTokenResult = Promise.resolve(stubResponse);
 
@@ -742,7 +741,6 @@ describe("ResponseValidator", function () {
         });
 
         it("should fail if nonce doesn't match id_token", function (done) {
-
             stubState.nonce = "invalid nonce";
             stubResponse.id_token = id_token;
 
@@ -800,7 +798,23 @@ describe("ResponseValidator", function () {
             });
         });
 
-        it("should set profile on result if successful", function (done) {
+		it("should validate JWT if nonce invalid and settings _validateNonce=false", function (done) {
+			settings._validateNonce = false;
+			stubState.nonce = "invalid nonce";
+			stubResponse.id_token = id_token;
+			stubMetadataService.getIssuerResult = Promise.resolve("test");
+			stubMetadataService.getSigningKeysResult = Promise.resolve([{ kid: 'a3rMUgMFv9tPclLa6yF3zAkfquE' }]);
+
+			mockJoseUtility.validateJwtResult = Promise.resolve();
+
+			subject._validateIdToken(stubState, stubResponse).then(response => {
+				mockJoseUtility.validateJwtWasCalled.should.be.true;
+				done();
+			});
+		});
+
+
+		it("should set profile on result if successful", function (done) {
 
             stubResponse.id_token = id_token;
             stubMetadataService.getIssuerResult = Promise.resolve("test");
