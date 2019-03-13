@@ -87,7 +87,11 @@ export class UserManager extends OidcClient {
     }
 
     signinRedirectBeta(args) {
-        args.isBetaSignin = true;
+        if(typeof args !== "undefined") {
+            args.isBetaSignin = true;
+        } else {
+            args = { isBetaSignin: true }
+        }
         return this._signinStart(args, this._redirectNavigator).then(()=>{
             Log.info("UserManager.signinRedirectBeta: successful");
         });
