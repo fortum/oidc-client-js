@@ -1,16 +1,16 @@
 // Copyright (c) Brock Allen & Dominick Baier. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See LICENSE in the project root for license information.
 
-import { Log } from './Log';
-import { OidcClient } from './OidcClient';
-import { UserManagerSettings } from './UserManagerSettings';
-import { User } from './User';
-import { UserManagerEvents } from './UserManagerEvents';
-import { SilentRenewService } from './SilentRenewService';
-import { SessionMonitor } from './SessionMonitor';
-import { TokenRevocationClient } from './TokenRevocationClient';
-import { TokenClient } from './TokenClient';
-import { JoseUtil } from './JoseUtil';
+import { Log } from './Log.js';
+import { OidcClient } from './OidcClient.js';
+import { UserManagerSettings } from './UserManagerSettings.js';
+import { User } from './User.js';
+import { UserManagerEvents } from './UserManagerEvents.js';
+import { SilentRenewService } from './SilentRenewService.js';
+import { SessionMonitor } from './SessionMonitor.js';
+import { TokenRevocationClient } from './TokenRevocationClient.js';
+import { TokenClient } from './TokenClient.js';
+import { JoseUtil } from './JoseUtil.js';
 
 
 export class UserManager extends OidcClient {
@@ -86,20 +86,24 @@ export class UserManager extends OidcClient {
         });
     }
 
-    signinRedirect(args) {
-        return this._signinStart(args, this._redirectNavigator).then(()=>{
+    signinRedirect(args = {}) {
+        args = Object.assign({}, args);
+
+        args.request_type = "si:r";
+        let navParams = {
+            useReplaceToNavigate : args.useReplaceToNavigate
+        };
+        return this._signinStart(args, this._redirectNavigator, navParams).then(()=>{
             Log.info("UserManager.signinRedirect: successful");
         });
     }
     signinRedirectCallback(url) {
         return this._signinEnd(url || this._redirectNavigator.url).then(user => {
-            if (user) {
-                if (user.profile && user.profile.sub) {
-                    Log.info("UserManager.signinRedirectCallback: successful, signed in sub: ", user.profile.sub);
-                }
-                else {
-                    Log.info("UserManager.signinRedirectCallback: no sub");
-                }
+            if (user.profile && user.profile.sub) {
+                Log.info("UserManager.signinRedirectCallback: successful, signed in sub: ", user.profile.sub);
+            }
+            else {
+                Log.info("UserManager.signinRedirectCallback: no sub");
             }
 
             return user;
@@ -107,6 +111,9 @@ export class UserManager extends OidcClient {
     }
 
     signinPopup(args = {}) {
+        args = Object.assign({}, args);
+
+        args.request_type = "si:p";
         let url = args.redirect_uri || this.settings.popup_redirect_uri || this.settings.redirect_uri;
         if (!url) {
             Log.error("UserManager.signinPopup: No popup_redirect_uri or redirect_uri configured");
@@ -151,17 +158,34 @@ export class UserManager extends OidcClient {
     }
 
     signinSilent(args = {}) {
+        args = Object.assign({}, args);
+
+        args.request_type = "si:s";
         // first determine if we have a refresh token, or need to use iframe
         return this._loadUser().then(user => {
             if (user && user.refresh_token) {
                 args.refresh_token = user.refresh_token;
                 return this._useRefreshToken(args);
             }
+
+            else if(user && this.settings.silent_refresh_uri !== undefined){
+                args.access_token = user.access_token;
+                return this._silentRefresh(args)
+            }
             else {
                 args.id_token_hint = args.id_token_hint || (this.settings.includeIdTokenInSilentRenew && user && user.id_token);
+                if (user && this._settings.validateSubOnSilentRenew) {
+                    Log.debug("UserManager.signinSilent, subject prior to silent renew: ", user.profile.sub);
+                    args.current_sub = user.profile.sub;
+                }
                 return this._signinSilentIframe(args);
             }
         });
+    }
+    _silentRefresh(args){
+        this._tokenClient.performSilentRefresh(args).then(result =>{
+            this._updateUser(result);
+        })
     }
 
     _useRefreshToken(args = {}) {
@@ -175,61 +199,67 @@ export class UserManager extends OidcClient {
                 return Promise.reject("No access token returned from token endpoint");
             }
 
-            return this._loadUser().then(user => {
-                if (user) {
-                    let idTokenValidation = Promise.resolve();
-                    if (result.id_token) {
-                        idTokenValidation = this._validateIdTokenFromTokenRefreshToken(user.profile, result.id_token);
-                    }
+            return this._updateUser(result)
+        });
+    }
 
-                    return idTokenValidation.then(() => {
-                        Log.debug("UserManager._useRefreshToken: refresh token response success");
-                        user.access_token = result.access_token;
-                        user.refresh_token = result.refresh_token || user.refresh_token;
-                        user.expires_in = result.expires_in;
+    _updateUser(args){
+        return this._loadUser().then(user => {
 
-                        return this.storeUser(user).then(()=>{
-                            this._events.load(user);
-                            return user;
-                        });
+            if (user) {
+                let idTokenValidation = Promise.resolve();
+                if (args.id_token) {
+                    idTokenValidation = this._validateIdTokenFromTokenRefreshToken(user.profile, args.id_token);
+                }
+                return idTokenValidation.then(() => {
+                    Log.debug("UserManager._useRefreshToken: refresh token response success");
+                    user.id_token = args.id_token;
+                    user.access_token = args.access_token;
+                    user.refresh_token = args.refresh_token || user.refresh_token;
+                    user.expires_in = args.expires_in;
+                    return this.storeUser(user).then(()=>{
+                        this._events.load(user);
+                        return user;
                     });
-                }
-                else {
-                    return null;
-                }
-            });
+                });
+            }
+            else {
+                return null;
+            }
         });
     }
 
     _validateIdTokenFromTokenRefreshToken(profile, id_token) {
         return this._metadataService.getIssuer().then(issuer => {
-            return this._joseUtil.validateJwtAttributes(id_token, issuer, this._settings.client_id, this._settings.clockSkew).then(payload => {
-                if (!payload) {
-                    Log.error("UserManager._validateIdTokenFromTokenRefreshToken: Failed to validate id_token");
-                    return Promise.reject(new Error("Failed to validate id_token"));
-                }
-                if (payload.sub !== profile.sub) {
-                    Log.error("UserManager._validateIdTokenFromTokenRefreshToken: sub in id_token does not match current sub");
-                    return Promise.reject(new Error("sub in id_token does not match current sub"));
-                }
-                if (payload.auth_time && payload.auth_time !== profile.auth_time) {
-                    Log.error("UserManager._validateIdTokenFromTokenRefreshToken: auth_time in id_token does not match original auth_time");
-                    return Promise.reject(new Error("auth_time in id_token does not match original auth_time"));
-                }
-                if (payload.azp && payload.azp !== profile.azp) {
-                    Log.error("UserManager._validateIdTokenFromTokenRefreshToken: azp in id_token does not match original azp");
-                    return Promise.reject(new Error("azp in id_token does not match original azp"));
-                }
-                if (!payload.azp && profile.azp) {
-                    Log.error("UserManager._validateIdTokenFromTokenRefreshToken: azp not in id_token, but present in original id_token");
-                    return Promise.reject(new Error("azp not in id_token, but present in original id_token"));
-                }
+            return this.settings.getEpochTime().then(now => {
+                return this._joseUtil.validateJwtAttributes(id_token, issuer, this._settings.client_id, this._settings.clockSkew, now).then(payload => {
+                    if (!payload) {
+                        Log.error("UserManager._validateIdTokenFromTokenRefreshToken: Failed to validate id_token");
+                        return Promise.reject(new Error("Failed to validate id_token"));
+                    }
+                    if (payload.sub !== profile.sub) {
+                        Log.error("UserManager._validateIdTokenFromTokenRefreshToken: sub in id_token does not match current sub");
+                        return Promise.reject(new Error("sub in id_token does not match current sub"));
+                    }
+                    if (payload.auth_time && payload.auth_time !== profile.auth_time) {
+                        Log.error("UserManager._validateIdTokenFromTokenRefreshToken: auth_time in id_token does not match original auth_time");
+                        return Promise.reject(new Error("auth_time in id_token does not match original auth_time"));
+                    }
+                    if (payload.azp && payload.azp !== profile.azp) {
+                        Log.error("UserManager._validateIdTokenFromTokenRefreshToken: azp in id_token does not match original azp");
+                        return Promise.reject(new Error("azp in id_token does not match original azp"));
+                    }
+                    if (!payload.azp && profile.azp) {
+                        Log.error("UserManager._validateIdTokenFromTokenRefreshToken: azp not in id_token, but present in original id_token");
+                        return Promise.reject(new Error("azp not in id_token, but present in original id_token"));
+                    }
+                });
             });
         });
     }
-    
+
     _signinSilentIframe(args = {}) {
-        let url = args.redirect_uri || this.settings.silent_redirect_uri;
+        let url = args.redirect_uri || this.settings.silent_redirect_uri || this.settings.redirect_uri;
         if (!url) {
             Log.error("UserManager.signinSilent: No silent_redirect_uri configured");
             return Promise.reject(new Error("No silent_redirect_uri configured"));
@@ -270,8 +300,41 @@ export class UserManager extends OidcClient {
         });
     }
 
+    signinCallback(url) {
+        return this.readSigninResponseState(url).then(({state, response}) => {
+            if (state.request_type === "si:r") {
+                return this.signinRedirectCallback(url);
+            }
+            if (state.request_type === "si:p") {
+                return this.signinPopupCallback(url);
+            }
+            if (state.request_type === "si:s") {
+                return this.signinSilentCallback(url);
+            }
+            return Promise.reject(new Error("invalid response_type in state"));
+        });
+    }
+
+    signoutCallback(url, keepOpen) {
+        return this.readSignoutResponseState(url).then(({state, response}) => {
+            if (state) {
+                if (state.request_type === "so:r") {
+                    return this.signoutRedirectCallback(url);
+                }
+                if (state.request_type === "so:p") {
+                    return this.signoutPopupCallback(url, keepOpen);
+                }
+                return Promise.reject(new Error("invalid response_type in state"));
+            }
+            return response;
+        });
+    }
+
     querySessionStatus(args = {}) {
-        let url = args.redirect_uri || this.settings.silent_redirect_uri;
+        args = Object.assign({}, args);
+
+        args.request_type = "si:s"; // this acts like a signin silent
+        let url = args.redirect_uri || this.settings.silent_redirect_uri || this.settings.redirect_uri;
         if (!url) {
             Log.error("UserManager.querySessionStatus: No silent_redirect_uri configured");
             return Promise.reject(new Error("No silent_redirect_uri configured"));
@@ -280,7 +343,8 @@ export class UserManager extends OidcClient {
         args.redirect_uri = url;
         args.prompt = "none";
         args.response_type = args.response_type || this.settings.query_status_response_type;
-        args.scope = "openid";
+        args.scope = args.scope || "openid";
+        args.skipUserInfo = true;
 
         return this._signinStart(args, this._iframeNavigator, {
             startUrl: url,
@@ -300,13 +364,29 @@ export class UserManager extends OidcClient {
                 else {
                     Log.info("querySessionStatus successful, user not authenticated");
                 }
+            })
+            .catch(err => {
+                if (err.session_state && this.settings.monitorAnonymousSession) {
+                    if (err.message == "login_required" ||
+                        err.message == "consent_required" ||
+                        err.message == "interaction_required" ||
+                        err.message == "account_selection_required"
+                    ) {
+                        Log.info("UserManager.querySessionStatus: querySessionStatus success for anonymous user");
+                        return {
+                            session_state: err.session_state
+                        };
+                    }
+                }
+
+                throw err;
             });
         });
     }
 
     _signin(args, navigator, navigatorParams = {}) {
         return this._signinStart(args, navigator, navigatorParams).then(navResponse => {
-            return this._signinEnd(navResponse.url);
+            return this._signinEnd(navResponse.url, args);
         });
     }
     _signinStart(args, navigator, navigatorParams = {}) {
@@ -330,11 +410,21 @@ export class UserManager extends OidcClient {
             });
         });
     }
-    _signinEnd(url) {
+    _signinEnd(url, args = {}) {
         return this.processSigninResponse(url).then(signinResponse => {
             Log.debug("UserManager._signinEnd: got signin response");
 
             let user = new User(signinResponse);
+
+            if (args.current_sub) {
+                if (args.current_sub !== user.profile.sub) {
+                    Log.debug("UserManager._signinEnd: current user does not match user returned from signin. sub from signin: ", user.profile.sub);
+                    return Promise.reject(new Error("login_required"));
+                }
+                else {
+                    Log.debug("UserManager._signinEnd: current user matches user returned from signin");
+                }
+            }
 
             return this.storeUser(user).then(() => {
                 Log.debug("UserManager._signinEnd: user stored");
@@ -351,11 +441,17 @@ export class UserManager extends OidcClient {
     }
 
     signoutRedirect(args = {}) {
+        args = Object.assign({}, args);
+
+        args.request_type = "so:r";
         let postLogoutRedirectUri = args.post_logout_redirect_uri || this.settings.post_logout_redirect_uri;
         if (postLogoutRedirectUri){
             args.post_logout_redirect_uri = postLogoutRedirectUri;
         }
-        return this._signoutStart(args, this._redirectNavigator).then(()=>{
+        let navParams = {
+            useReplaceToNavigate : args.useReplaceToNavigate
+        };
+        return this._signoutStart(args, this._redirectNavigator, navParams).then(()=>{
             Log.info("UserManager.signoutRedirect: successful");
         });
     }
@@ -367,6 +463,9 @@ export class UserManager extends OidcClient {
     }
 
     signoutPopup(args = {}) {
+        args = Object.assign({}, args);
+
+        args.request_type = "so:p";
         let url = args.post_logout_redirect_uri || this.settings.popup_post_logout_redirect_uri || this.settings.post_logout_redirect_uri;
         args.post_logout_redirect_uri = url;
         args.display = "popup";
@@ -478,14 +577,14 @@ export class UserManager extends OidcClient {
             var access_token = user.access_token;
             var refresh_token = user.refresh_token;
 
-            return this._revokeAccessTokenInternal(access_token, require)
+            return this._revokeAccessTokenInternal(access_token, required)
                 .then(atSuccess => {
                     return this._revokeRefreshTokenInternal(refresh_token, required)
                         .then(rtSuccess => {
                             if (!atSuccess && !rtSuccess) {
                                 Log.debug("UserManager.revokeAccessToken: no need to revoke due to no token(s), or JWT format");
                             }
-                            
+
                             return atSuccess || rtSuccess;
                         });
                 });

@@ -1,10 +1,11 @@
 // Copyright (c) Brock Allen & Dominick Baier. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See LICENSE in the project root for license information.
 
-import { Log } from './Log';
-import { WebStorageStateStore } from './WebStorageStateStore';
-import { ResponseValidator } from './ResponseValidator';
-import { MetadataService } from './MetadataService';
+import { Log } from './Log.js';
+import { ClockService } from './ClockService.js';
+import { WebStorageStateStore } from './WebStorageStateStore.js';
+import { ResponseValidator } from './ResponseValidator.js';
+import { MetadataService } from './MetadataService.js';
 
 const OidcMetadataUrlPath = '.well-known/openid-configuration';
 
@@ -24,13 +25,19 @@ export class OidcClientSettings {
         prompt, display, max_age, ui_locales, acr_values, resource, response_mode,
         // behavior flags
         filterProtocolClaims = true, loadUserInfo = true,
-        staleStateAge = DefaultStaleStateAge, clockSkew = DefaultClockSkewInSeconds,
+        validateNonce = true,
+        silent_refresh_uri,
+        staleStateAge = DefaultStaleStateAge,
+        clockSkew = DefaultClockSkewInSeconds,
+        clockService = new ClockService(),
+        userInfoJwtIssuer = 'OP',
         // other behavior
         stateStore = new WebStorageStateStore(),
         ResponseValidatorCtor = ResponseValidator,
         MetadataServiceCtor = MetadataService,
         // extra query params
-        extraQueryParams = {}
+        extraQueryParams = {},
+        extraTokenParams = {}
     } = {}) {
 
         this._authority = authority;
@@ -51,18 +58,24 @@ export class OidcClientSettings {
         this._ui_locales = ui_locales;
         this._acr_values = acr_values;
         this._resource = resource;
+        this._validateNonce = !!validateNonce;
+        this._silent_refresh_uri =silent_refresh_uri;
+
         this._response_mode = response_mode;
 
         this._filterProtocolClaims = !!filterProtocolClaims;
         this._loadUserInfo = !!loadUserInfo;
         this._staleStateAge = staleStateAge;
         this._clockSkew = clockSkew;
+        this._clockService = clockService;
+        this._userInfoJwtIssuer = userInfoJwtIssuer;
 
         this._stateStore = stateStore;
         this._validator = new ResponseValidatorCtor(this);
         this._metadataService = new MetadataServiceCtor(this);
 
         this._extraQueryParams = typeof extraQueryParams === 'object' ? extraQueryParams : {};
+        this._extraTokenParams = typeof extraTokenParams === 'object' ? extraTokenParams : {};
     }
 
     // client config
@@ -153,6 +166,7 @@ export class OidcClientSettings {
     get metadata() {
         return this._metadata;
     }
+
     set metadata(value) {
         this._metadata = value;
     }
@@ -174,8 +188,19 @@ export class OidcClientSettings {
     get staleStateAge() {
         return this._staleStateAge;
     }
+    get validateNonce() {
+        return this._validateNonce;
+    }
+
+    get silent_refresh_uri(){
+        return this._silent_refresh_uri
+    }
+
     get clockSkew() {
         return this._clockSkew;
+    }
+    get userInfoJwtIssuer() {
+        return this._userInfoJwtIssuer;
     }
 
     get stateStore() {
@@ -198,5 +223,22 @@ export class OidcClientSettings {
         } else {
             this._extraQueryParams = {};
         }
+    }
+
+    // extra token params
+    get extraTokenParams() {
+        return this._extraTokenParams;
+    }
+    set extraTokenParams(value) {
+        if (typeof value === 'object'){
+            this._extraTokenParams = value;
+        } else {
+            this._extraTokenParams = {};
+        }
+    }
+
+    // get the time
+    getEpochTime() {
+        return this._clockService.getEpochTime();
     }
 }

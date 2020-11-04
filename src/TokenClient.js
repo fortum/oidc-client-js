@@ -1,9 +1,9 @@
 // Copyright (c) Brock Allen & Dominick Baier. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See LICENSE in the project root for license information.
 
-import { JsonService } from './JsonService';
-import { MetadataService } from './MetadataService';
-import { Log } from './Log';
+import { JsonService } from './JsonService.js';
+import { MetadataService } from './MetadataService.js';
+import { Log } from './Log.js';
 
 export class TokenClient {
     constructor(settings, JsonServiceCtor = JsonService, MetadataServiceCtor = MetadataService) {
@@ -18,6 +18,8 @@ export class TokenClient {
     }
 
     exchangeCode(args = {}) {
+        args = Object.assign({}, args);
+
         args.grant_type = args.grant_type || "authorization_code";
         args.client_id = args.client_id || this._settings.client_id;
         args.redirect_uri = args.redirect_uri || this._settings.redirect_uri;
@@ -49,9 +51,19 @@ export class TokenClient {
         });
     }
 
+    performSilentRefresh(args={}){
+        return this._jsonService.postForm(this._settings.silent_refresh_uri, args).then(response => {
+            Log.debug("TokenClient.performSilentRefresh: response received");
+            return response;
+        });
+    }
+
     exchangeRefreshToken(args = {}) {
+        args = Object.assign({}, args);
+
         args.grant_type = args.grant_type || "refresh_token";
         args.client_id = args.client_id || this._settings.client_id;
+        args.client_secret = args.client_secret || this._settings.client_secret;
 
         if (!args.refresh_token) {
             Log.error("TokenClient.exchangeRefreshToken: No refresh_token passed");
